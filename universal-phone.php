@@ -41,9 +41,6 @@ class Universal_Phone_Input {
 	private function __construct() {
 		add_action( 'wp_enqueue_scripts', array( $this, 'enqueue_assets' ) );
 
-		// Global validation/sanitization loop for all $_POST data containing _e164
-		add_action( 'init', array( $this, 'global_e164_sanitization' ), 1 );
-
 		// Contact Form 7 Validation Hooks
 		add_filter( 'wpcf7_validate_tel', array( $this, 'cf7_validation' ), 10, 2 );
 		add_filter( 'wpcf7_validate_tel*', array( $this, 'cf7_validation' ), 10, 2 );
@@ -59,29 +56,13 @@ class Universal_Phone_Input {
 	}
 
 	/**
-	 * Globally sanitize incoming POST data specifically for phone_e164 fields.
-	 * This acts as a universal fallback for all form builders to prevent payload injection.
+	 * Validate a value against E.164 international phone number format.
+	 *
+	 * @param string $value The value to validate.
+	 * @return bool True if the value matches E.164 format, false otherwise.
 	 */
-	public function global_e164_sanitization() {
-		$request_method = isset( $_SERVER['REQUEST_METHOD'] ) ? strtoupper( sanitize_text_field( wp_unslash( $_SERVER['REQUEST_METHOD'] ) ) ) : '';
-
-		if ( $request_method !== 'POST' || empty( $_POST ) ) {
-			return;
-		}
-
-		if ( ! isset( $_POST['universal_phone_nonce'] ) || ! wp_verify_nonce( sanitize_key( $_POST['universal_phone_nonce'] ), 'universal_phone_action' ) ) {
-			return; // Stop execution if nonce is missing or invalid (CSRF protection)
-		}
-
-		array_walk_recursive( $_POST, function ( &$value, $key ) {
-			if ( is_string( $key ) && strpos( $key, '_e164' ) !== false ) {
-				$clean_val = wp_unslash( $value );
-				// Must be strictly empty or match E.164 format
-				if ( ! empty( $clean_val ) && ! preg_match( '/^\+[1-9]\d{1,14}$/', $clean_val ) ) {
-					$value = ''; // Strip malicious data completely
-				}
-			}
-		} );
+	private function is_valid_e164( $value ) {
+		return (bool) preg_match( '/^\+[1-9]\d{1,14}$/', $value );
 	}
 
 	/**
@@ -95,7 +76,7 @@ class Universal_Phone_Input {
 		if ( isset( $_POST[$e164_name] ) ) {
 			$phone_value = sanitize_text_field( wp_unslash( $_POST[$e164_name] ) );
 
-			if ( ! empty( $phone_value ) && ! preg_match( '/^\+[1-9]\d{1,14}$/', $phone_value ) ) {
+			if ( ! empty( $phone_value ) && ! $this->is_valid_e164( $phone_value ) ) {
 				if ( method_exists( $result, 'invalidate' ) ) {
 					$result->invalidate( $tag, __( 'Please enter a valid international phone number.', 'universal-phone' ) );
 				}
@@ -122,7 +103,7 @@ class Universal_Phone_Input {
 			
 			if ( isset( $_POST['form_fields'][ $id . '_e164' ] ) ) {
 				$val = sanitize_text_field( wp_unslash( $_POST['form_fields'][ $id . '_e164' ] ) );
-				if ( ! empty( $val ) && ! preg_match( '/^\+[1-9]\d{1,14}$/', $val ) ) {
+				if ( ! empty( $val ) && ! $this->is_valid_e164( $val ) ) {
 					$ajax_handler->add_error( $id, __( 'Please enter a valid international phone number.', 'universal-phone' ) );
 				}
 			}
@@ -135,7 +116,7 @@ class Universal_Phone_Input {
 	public function wpforms_validation( $field_id, $field_submit, $form_data ) {
 		if ( isset( $_POST['wpforms']['fields'][ $field_id . '_e164' ] ) ) {
 			$val = sanitize_text_field( wp_unslash( $_POST['wpforms']['fields'][ $field_id . '_e164' ] ) );
-			if ( ! empty( $val ) && ! preg_match( '/^\+[1-9]\d{1,14}$/', $val ) ) {
+			if ( ! empty( $val ) && ! $this->is_valid_e164( $val ) ) {
 				wpforms()->process->errors[ $form_data['id'] ][ $field_id ] = __( 'Please enter a valid international phone number.', 'universal-phone' );
 			}
 		}
@@ -173,7 +154,6 @@ class Universal_Phone_Input {
 			'utilsScript'     => 'https://cdnjs.cloudflare.com/ajax/libs/intl-tel-input/17.0.19/js/utils.js',
 			'defaultCountry'  => apply_filters( 'universal_phone_default_country', 'us' ),
 			'overwriteInput'  => apply_filters( 'universal_phone_overwrite_input', false ), // Set to true to overwrite visible input with E.164
-			'nonce'           => wp_create_nonce( 'universal_phone_action' ), // CSRF Protection nonce
 		);
 		wp_localize_script( 'universal-iti-init', 'UniversalPhoneData', $data );
 	}
