@@ -94,7 +94,7 @@ class Universal_Phone_Input {
 	 * See: WPCF7_Submission::__construct() which verifies '_wpnonce' → 'wpcf7-form'.
 	 */
 	public function cf7_validation( $result, $tag ) {
-		$name      = $tag->name;
+		$name      = sanitize_key( $tag->name );
 		$e164_name = $name . '_e164';
 
 		// phpcs:ignore WordPress.Security.NonceVerification.Missing -- Nonce verified by CF7 core before this hook fires.
@@ -131,7 +131,7 @@ class Universal_Phone_Input {
 			if ( empty( $field['custom_id'] ) ) {
 				continue;
 			}
-			$id = $field['custom_id'];
+			$id = sanitize_key( $field['custom_id'] );
 
 			// phpcs:ignore WordPress.Security.NonceVerification.Missing -- Nonce verified by Elementor Pro before this hook fires.
 			$original_value = isset( $_POST['form_fields'][ $id ] ) ? sanitize_text_field( wp_unslash( $_POST['form_fields'][ $id ] ) ) : '';
@@ -155,6 +155,9 @@ class Universal_Phone_Input {
 	 * See: WPForms_Process::process() which verifies 'wpforms[nonce]'.
 	 */
 	public function wpforms_validation( $field_id, $field_submit, $form_data ) {
+		$field_id = absint( $field_id );
+		$form_id  = absint( $form_data['id'] );
+
 		// $field_submit contains the original field value provided by WPForms.
 		$original_value = is_string( $field_submit ) ? sanitize_text_field( $field_submit ) : '';
 
@@ -164,7 +167,7 @@ class Universal_Phone_Input {
 			$e164_value = isset( $_POST['wpforms']['fields'][ $field_id . '_e164' ] ) ? self::sanitize_e164( $_POST['wpforms']['fields'][ $field_id . '_e164' ] ) : '';
 
 			if ( empty( $e164_value ) ) {
-				wpforms()->process->errors[ $form_data['id'] ][ $field_id ] = __( 'Please enter a valid international phone number.', 'universal-phone' );
+				wpforms()->process->errors[ $form_id ][ $field_id ] = __( 'Please enter a valid international phone number.', 'universal-phone' );
 			}
 		}
 	}
