@@ -94,6 +94,24 @@ class Universal_Phone_Input {
 	 * See: WPCF7_Submission::__construct() which verifies '_wpnonce' → 'wpcf7-form'.
 	 */
 	public function cf7_validation( $result, $tag ) {
+		// Only validate fields that are actually phone-related. The hooks fire for all
+		// text and tel fields, so skip any field that is not a phone field to avoid
+		// unexpected validation errors on unrelated text inputs.
+		$is_tel_basetype = isset( $tag->basetype ) && 'tel' === $tag->basetype;
+		$field_name_lower = strtolower( sanitize_key( $tag->name ) );
+		$phone_keywords   = array( 'phone', 'mobile', 'tel', 'whatsapp' );
+		$name_has_keyword = false;
+		foreach ( $phone_keywords as $keyword ) {
+			if ( false !== strpos( $field_name_lower, $keyword ) ) {
+				$name_has_keyword = true;
+				break;
+			}
+		}
+
+		if ( ! $is_tel_basetype && ! $name_has_keyword ) {
+			return $result;
+		}
+
 		$name      = sanitize_key( $tag->name );
 		$e164_name = $name . '_e164';
 
@@ -163,6 +181,10 @@ class Universal_Phone_Input {
 
 		// If the user typed a phone number, the _e164 field MUST exist and be valid.
 		if ( ! empty( $original_value ) ) {
+			// The JS hidden-field name is built from the original input name, e.g.
+			// `wpforms[fields][5]`, which produces `wpforms[fields][5]_e164`.
+			// PHP parses that as $_POST['wpforms']['fields']['5_e164'], so the
+			// string-keyed lookup below correctly matches what the JS submitted.
 			// phpcs:ignore WordPress.Security.NonceVerification.Missing -- Nonce verified by WPForms core before this hook fires.
 			$e164_value = isset( $_POST['wpforms']['fields'][ $field_id . '_e164' ] ) ? self::sanitize_e164( $_POST['wpforms']['fields'][ $field_id . '_e164' ] ) : '';
 
@@ -176,6 +198,12 @@ class Universal_Phone_Input {
 	 * Enqueue scripts and styles.
 	 */
 	public function enqueue_assets() {
+		// Allow site owners to disable asset loading on pages without forms.
+		// Usage: add_filter( 'universal_phone_should_enqueue', '__return_false' );
+		if ( ! apply_filters( 'universal_phone_should_enqueue', true ) ) {
+			return;
+		}
+
 		$assets_url = plugin_dir_url( __FILE__ ) . 'assets/';
 
 		// Enqueue intl-tel-input CSS locally
@@ -201,9 +229,19 @@ class Universal_Phone_Input {
 		$overwrite_input = apply_filters( 'universal_phone_overwrite_input', false );
 		$overwrite_input = (bool) $overwrite_input;
 
+		// Allow site owners to narrow the MutationObserver to a specific container
+		// (e.g. '#content') to reduce exposure to injected elements.
+		// Defaults to 'body' for full backward-compatible coverage.
+		// Usage: add_filter( 'universal_phone_observe_selector', function() { return '#main'; } );
+		// Note: wp_strip_all_tags() is used (rather than sanitize_text_field) to preserve
+		// CSS selector characters such as >, +, ~, [ and ] that the latter would strip.
+		$observe_selector = apply_filters( 'universal_phone_observe_selector', 'body' );
+		$observe_selector = is_string( $observe_selector ) ? wp_strip_all_tags( $observe_selector ) : 'body';
+
 		$data = array(
-			'defaultCountry'  => $default_country,
-			'overwriteInput'  => $overwrite_input,
+			'defaultCountry'   => $default_country,
+			'overwriteInput'   => $overwrite_input,
+			'observeSelector'  => $observe_selector,
 		);
 		wp_localize_script( 'universal-iti-init', 'UniversalPhoneData', $data );
 	}

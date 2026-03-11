@@ -225,6 +225,10 @@
         hiddenInput.name = safeName + '_e164'; // e.g. 'phone_e164'
         hiddenInput.className = 'iti-e164-hidden';
 
+        // Store a direct reference to the phone input on the hidden element so
+        // the submit handler does not rely on DOM position (previousElementSibling).
+        hiddenInput._itiInput = input;
+
         // Insert hidden input after the visible input
         if (input.parentNode) {
             input.parentNode.insertBefore(hiddenInput, input.nextSibling);
@@ -262,9 +266,11 @@
                 form.dataset.upiSubmitBound = '1';
 
                 form.addEventListener('submit', function () {
-                    // Update ALL phone hidden inputs in this form
+                    // Update ALL phone hidden inputs in this form.
+                    // Use the stored _itiInput reference instead of DOM position to avoid
+                    // breakage when other plugins inject elements between the two inputs.
                     form.querySelectorAll('.iti-e164-hidden').forEach(function (hidden) {
-                        const phoneInput = hidden.previousElementSibling;
+                        const phoneInput = hidden._itiInput;
                         if (phoneInput && phoneInput.dataset.itiInitialized) {
                             const phoneIti = window.intlTelInputGlobals.getInstance(phoneInput);
                             if (phoneIti && phoneIti.isValidNumber()) {
@@ -294,7 +300,20 @@
         // Initial scan of the entire document
         scanForInputs(document.body);
 
-        // Use MutationObserver for dynamic forms (Elementor popups, AJAX loaded content)
+        // Use MutationObserver for dynamic forms (Elementor popups, AJAX loaded content).
+        // observeTarget can be narrowed via the `universal_phone_observe_selector` PHP filter
+        // (passed as config.observeSelector) to reduce exposure to injected elements.
+        let observeTarget = document.body;
+        if (config.observeSelector) {
+            try {
+                observeTarget = document.querySelector(config.observeSelector) || document.body;
+            } catch (e) {
+                // Invalid CSS selector — fall back to document.body.
+                console.warn('Universal Phone Input: invalid observeSelector "' + config.observeSelector + '", falling back to document.body.', e);
+                observeTarget = document.body;
+            }
+        }
+
         const observer = new MutationObserver(function (mutations) {
             mutations.forEach(function (mutation) {
                 mutation.addedNodes.forEach(function (node) {
@@ -310,7 +329,7 @@
             });
         });
 
-        observer.observe(document.body, {
+        observer.observe(observeTarget, {
             childList: true,
             subtree: true
         });
