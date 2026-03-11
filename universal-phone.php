@@ -63,15 +63,22 @@ class Universal_Phone_Input {
 	 * This acts as a universal fallback for all form builders to prevent payload injection.
 	 */
 	public function global_e164_sanitization() {
-		if ( $_SERVER['REQUEST_METHOD'] !== 'POST' || empty( $_POST ) ) {
+		$request_method = isset( $_SERVER['REQUEST_METHOD'] ) ? strtoupper( sanitize_text_field( wp_unslash( $_SERVER['REQUEST_METHOD'] ) ) ) : '';
+
+		if ( $request_method !== 'POST' || empty( $_POST ) ) {
 			return;
+		}
+
+		if ( ! isset( $_POST['universal_phone_nonce'] ) || ! wp_verify_nonce( sanitize_key( $_POST['universal_phone_nonce'] ), 'universal_phone_action' ) ) {
+			return; // Stop execution if nonce is missing or invalid (CSRF protection)
 		}
 
 		array_walk_recursive( $_POST, function ( &$value, $key ) {
 			if ( is_string( $key ) && strpos( $key, '_e164' ) !== false ) {
-				// Must be empty or match strictly E.164 format
-				if ( ! empty( $value ) && ! preg_match( '/^\+[1-9]\d{1,14}$/', $value ) ) {
-					$value = ''; // Strip malicious data
+				$clean_val = wp_unslash( $value );
+				// Must be strictly empty or match E.164 format
+				if ( ! empty( $clean_val ) && ! preg_match( '/^\+[1-9]\d{1,14}$/', $clean_val ) ) {
+					$value = ''; // Strip malicious data completely
 				}
 			}
 		} );
@@ -166,6 +173,7 @@ class Universal_Phone_Input {
 			'utilsScript'     => 'https://cdnjs.cloudflare.com/ajax/libs/intl-tel-input/17.0.19/js/utils.js',
 			'defaultCountry'  => apply_filters( 'universal_phone_default_country', 'us' ),
 			'overwriteInput'  => apply_filters( 'universal_phone_overwrite_input', false ), // Set to true to overwrite visible input with E.164
+			'nonce'           => wp_create_nonce( 'universal_phone_action' ), // CSRF Protection nonce
 		);
 		wp_localize_script( 'universal-iti-init', 'UniversalPhoneData', $data );
 	}

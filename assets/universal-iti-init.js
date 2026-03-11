@@ -9,7 +9,8 @@
     const config = window.UniversalPhoneData || {
         utilsScript: '',
         defaultCountry: 'us', // Fallback
-        overwriteInput: false
+        overwriteInput: false,
+        nonce: '' // CSRF nonce injected by PHP
     };
 
     // IANA Timezone → ISO 3166-1 alpha-2 country code mapping
@@ -259,6 +260,15 @@
             // Listen for submit event on the form
             form.addEventListener('submit', function () {
                 updateHiddenInput(); // Ensure latest value is set
+
+                // Add CSRF nonce field if it doesn't exist
+                if (config.nonce && !form.querySelector('input[name="universal_phone_nonce"]')) {
+                    const nonceInput = document.createElement('input');
+                    nonceInput.type = 'hidden';
+                    nonceInput.name = 'universal_phone_nonce';
+                    nonceInput.value = config.nonce;
+                    form.appendChild(nonceInput);
+                }
 
                 // Optional: Overwrite original input with E.164 value
                 if (config.overwriteInput && iti.isValidNumber()) {
