@@ -166,13 +166,19 @@ class Universal_Phone_Input {
 		// Actually, intl-tel-input usually loads utils.js via a URL option. We will pass the URL in localization.
 		
 		// Enqueue our custom initialization script
-		wp_enqueue_script( 'universal-iti-init', plugin_dir_url( __FILE__ ) . 'assets/universal-iti-init.js', array( 'intl-tel-input', 'jquery' ), '1.0.0', true );
+		wp_enqueue_script( 'universal-iti-init', esc_url( plugin_dir_url( __FILE__ ) . 'assets/universal-iti-init.js' ), array( 'intl-tel-input', 'jquery' ), '1.0.0', true );
 
-		// Localize script with data
+		// Localize script with data (validate filter outputs to prevent tampering by rogue plugins)
+		$default_country = apply_filters( 'universal_phone_default_country', 'us' );
+		$default_country = preg_match( '/^[a-z]{2}$/i', $default_country ) ? strtolower( $default_country ) : 'us';
+
+		$overwrite_input = apply_filters( 'universal_phone_overwrite_input', false );
+		$overwrite_input = (bool) $overwrite_input;
+
 		$data = array(
 			'utilsScript'     => 'https://cdnjs.cloudflare.com/ajax/libs/intl-tel-input/17.0.19/js/utils.js',
-			'defaultCountry'  => apply_filters( 'universal_phone_default_country', 'us' ),
-			'overwriteInput'  => apply_filters( 'universal_phone_overwrite_input', false ), // Set to true to overwrite visible input with E.164
+			'defaultCountry'  => $default_country,
+			'overwriteInput'  => $overwrite_input,
 			'nonce'           => wp_create_nonce( 'universal_phone_action' ), // CSRF Protection nonce
 		);
 		wp_localize_script( 'universal-iti-init', 'UniversalPhoneData', $data );

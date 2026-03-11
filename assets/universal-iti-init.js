@@ -222,7 +222,9 @@
         // Prepare hidden input for E.164 format
         const hiddenInput = document.createElement('input');
         hiddenInput.type = 'hidden';
-        hiddenInput.name = (input.name || input.id) + '_e164'; // e.g. 'phone_e164'
+        // Sanitize field name to prevent injection via DOM manipulation
+        const safeName = (input.name || input.id).replace(/[^a-zA-Z0-9_\-\[\]]/g, '');
+        hiddenInput.name = safeName + '_e164'; // e.g. 'phone_e164'
         hiddenInput.className = 'iti-e164-hidden';
 
         // Insert hidden input after the visible input
@@ -253,28 +255,45 @@
         input.addEventListener('blur', updateHiddenInput);
         input.addEventListener('countrychange', updateHiddenInput);
 
-        // Handle Form Submission
+        // Handle Form Submission (deduplicate: only one listener per form)
         if (input.form) {
             const form = input.form;
 
-            // Listen for submit event on the form
-            form.addEventListener('submit', function () {
-                updateHiddenInput(); // Ensure latest value is set
+            if (!form.dataset.upiSubmitBound) {
+                form.dataset.upiSubmitBound = '1';
 
-                // Add CSRF nonce field if it doesn't exist
-                if (config.nonce && !form.querySelector('input[name="universal_phone_nonce"]')) {
-                    const nonceInput = document.createElement('input');
-                    nonceInput.type = 'hidden';
-                    nonceInput.name = 'universal_phone_nonce';
-                    nonceInput.value = config.nonce;
-                    form.appendChild(nonceInput);
-                }
+                form.addEventListener('submit', function () {
+                    // Update ALL phone hidden inputs in this form
+                    form.querySelectorAll('.iti-e164-hidden').forEach(function (hidden) {
+                        const phoneInput = hidden.previousElementSibling;
+                        if (phoneInput && phoneInput.dataset.itiInitialized) {
+                            const phoneIti = window.intlTelInputGlobals.getInstance(phoneInput);
+                            if (phoneIti && phoneIti.isValidNumber()) {
+                                hidden.value = phoneIti.getNumber();
+                            }
+                        }
+                    });
 
-                // Optional: Overwrite original input with E.164 value
-                if (config.overwriteInput && iti.isValidNumber()) {
-                    input.value = iti.getNumber();
-                }
-            });
+                    // Add CSRF nonce field if it doesn't exist
+                    if (config.nonce && !form.querySelector('input[name="universal_phone_nonce"]')) {
+                        const nonceInput = document.createElement('input');
+                        nonceInput.type = 'hidden';
+                        nonceInput.name = 'universal_phone_nonce';
+                        nonceInput.value = config.nonce;
+                        form.appendChild(nonceInput);
+                    }
+
+                    // Optional: Overwrite original inputs with E.164 values
+                    if (config.overwriteInput) {
+                        form.querySelectorAll('input[data-iti-initialized="1"]').forEach(function (phoneInput) {
+                            const phoneIti = window.intlTelInputGlobals.getInstance(phoneInput);
+                            if (phoneIti && phoneIti.isValidNumber()) {
+                                phoneInput.value = phoneIti.getNumber();
+                            }
+                        });
+                    }
+                });
+            }
         }
     }
 
