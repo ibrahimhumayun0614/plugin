@@ -7,10 +7,8 @@
 
     // Configuration from localized script data
     const config = window.UniversalPhoneData || {
-        utilsScript: '',
         defaultCountry: 'us', // Fallback
-        overwriteInput: false,
-        nonce: '' // CSRF nonce injected by PHP
+        overwriteInput: false
     };
 
     // IANA Timezone → ISO 3166-1 alpha-2 country code mapping
@@ -233,11 +231,11 @@
         }
 
         // Initialize intl-tel-input with timezone-based country detection
+        // utils.js is pre-loaded via wp_enqueue_script (no dynamic URL needed)
         const iti = window.intlTelInput(input, {
             initialCountry: detectCountry(),
             separateDialCode: true,
-            nationalMode: false,
-            utilsScript: config.utilsScript
+            nationalMode: false
         });
 
         // Function to update hidden input with E.164 number
@@ -273,15 +271,6 @@
                             }
                         }
                     });
-
-                    // Add CSRF nonce field if it doesn't exist
-                    if (config.nonce && !form.querySelector('input[name="universal_phone_nonce"]')) {
-                        const nonceInput = document.createElement('input');
-                        nonceInput.type = 'hidden';
-                        nonceInput.name = 'universal_phone_nonce';
-                        nonceInput.value = config.nonce;
-                        form.appendChild(nonceInput);
-                    }
 
                     // Optional: Overwrite original inputs with E.164 values
                     if (config.overwriteInput) {
