@@ -41,9 +41,6 @@ class Universal_Phone_Input {
 	private function __construct() {
 		add_action( 'wp_enqueue_scripts', array( $this, 'enqueue_assets' ) );
 
-		// Global validation/sanitization loop for all $_POST data containing _e164
-		add_action( 'init', array( $this, 'global_e164_sanitization' ), 1 );
-
 		// Contact Form 7 Validation Hooks
 		add_filter( 'wpcf7_validate_tel', array( $this, 'cf7_validation' ), 10, 2 );
 		add_filter( 'wpcf7_validate_tel*', array( $this, 'cf7_validation' ), 10, 2 );
@@ -57,45 +54,53 @@ class Universal_Phone_Input {
 		add_action( 'wpforms_process_validate_phone', array( $this, 'wpforms_validation' ), 10, 3 );
 		add_action( 'wpforms_process_validate_text', array( $this, 'wpforms_validation' ), 10, 3 );
 	}
-
 	/**
-	 * Globally sanitize incoming POST data specifically for phone_e164 fields.
-	 * This acts as a universal fallback for all form builders to prevent payload injection.
+	 * Sanitize and validate an E.164 phone number string.
+	 *
+	 * This is a pure utility method with no side effects — it does NOT modify
+	 * $_POST or any superglobals. Sanitization happens at the point of consumption
+	 * inside each form-builder validation hook.
+	 *
+	 * @param string $raw_value The raw value from $_POST (may still have WP slashes).
+	 * @return string Sanitized E.164 number, or empty string if invalid.
 	 */
-	public function global_e164_sanitization() {
-		$request_method = isset( $_SERVER['REQUEST_METHOD'] ) ? strtoupper( sanitize_text_field( wp_unslash( $_SERVER['REQUEST_METHOD'] ) ) ) : '';
+	public static function sanitize_e164( $raw_value ) {
+		$clean = sanitize_text_field( wp_unslash( $raw_value ) );
 
-		if ( $request_method !== 'POST' || empty( $_POST ) ) {
-			return;
+		if ( ! empty( $clean ) && preg_match( '/^\+[1-9]\d{1,14}$/', $clean ) ) {
+			return $clean;
 		}
 
-		if ( ! isset( $_POST['universal_phone_nonce'] ) || ! wp_verify_nonce( sanitize_key( $_POST['universal_phone_nonce'] ), 'universal_phone_action' ) ) {
-			return; // Stop execution if nonce is missing or invalid (CSRF protection)
-		}
-
-		array_walk_recursive( $_POST, function ( &$value, $key ) {
-			if ( is_string( $key ) && strpos( $key, '_e164' ) !== false ) {
-				$clean_val = wp_unslash( $value );
-				// Must be strictly empty or match E.164 format
-				if ( ! empty( $clean_val ) && ! preg_match( '/^\+[1-9]\d{1,14}$/', $clean_val ) ) {
-					$value = ''; // Strip malicious data completely
-				}
-			}
-		} );
+		return '';
 	}
 
 	/**
-	 * Contact Form 7 Specific Validation Hook
+	 * Check if a sanitized E.164 value is invalid (non-empty but failed regex).
+	 *
+	 * @param string $raw_value The raw value from $_POST.
+	 * @return bool True if the value is present but does not match E.164 format.
+	 */
+	public static function is_invalid_e164( $raw_value ) {
+		$clean = sanitize_text_field( wp_unslash( $raw_value ) );
+
+		return ! empty( $clean ) && ! preg_match( '/^\+[1-9]\d{1,14}$/', $clean );
+	}
+
+	/**
+	 * Contact Form 7 Specific Validation Hook.
 	 * Provides a nice UX error message if the hidden field data is tampered with.
+	 *
+	 * Nonce verification is handled by Contact Form 7 before this hook is called.
+	 * See: WPCF7_Submission::__construct() which verifies '_wpnonce' → 'wpcf7-form'.
 	 */
 	public function cf7_validation( $result, $tag ) {
 		$name      = $tag->name;
 		$e164_name = $name . '_e164';
 
-		if ( isset( $_POST[$e164_name] ) ) {
-			$phone_value = sanitize_text_field( wp_unslash( $_POST[$e164_name] ) );
-
-			if ( ! empty( $phone_value ) && ! preg_match( '/^\+[1-9]\d{1,14}$/', $phone_value ) ) {
+		// phpcs:ignore WordPress.Security.NonceVerification.Missing -- Nonce verified by CF7 core before this hook fires.
+		if ( isset( $_POST[ $e164_name ] ) ) {
+			// phpcs:ignore WordPress.Security.NonceVerification.Missing
+			if ( self::is_invalid_e164( $_POST[ $e164_name ] ) ) {
 				if ( method_exists( $result, 'invalidate' ) ) {
 					$result->invalidate( $tag, __( 'Please enter a valid international phone number.', 'universal-phone' ) );
 				}
@@ -106,7 +111,10 @@ class Universal_Phone_Input {
 	}
 
 	/**
-	 * Elementor Pro Specific Validation Hook
+	 * Elementor Pro Specific Validation Hook.
+	 *
+	 * Nonce verification is handled by Elementor Pro before this hook is called.
+	 * See: Elementor\Core\Common\Modules\Ajax\Module which verifies its own nonce.
 	 */
 	public function elementor_validation( $record, $ajax_handler ) {
 		$form_fields = $record->get_form_settings( 'form_fields' );
@@ -119,10 +127,11 @@ class Universal_Phone_Input {
 				continue;
 			}
 			$id = $field['custom_id'];
-			
+
+			// phpcs:ignore WordPress.Security.NonceVerification.Missing -- Nonce verified by Elementor Pro before this hook fires.
 			if ( isset( $_POST['form_fields'][ $id . '_e164' ] ) ) {
-				$val = sanitize_text_field( wp_unslash( $_POST['form_fields'][ $id . '_e164' ] ) );
-				if ( ! empty( $val ) && ! preg_match( '/^\+[1-9]\d{1,14}$/', $val ) ) {
+				// phpcs:ignore WordPress.Security.NonceVerification.Missing
+				if ( self::is_invalid_e164( $_POST['form_fields'][ $id . '_e164' ] ) ) {
 					$ajax_handler->add_error( $id, __( 'Please enter a valid international phone number.', 'universal-phone' ) );
 				}
 			}
@@ -130,12 +139,16 @@ class Universal_Phone_Input {
 	}
 
 	/**
-	 * WPForms Specific Validation Hook
+	 * WPForms Specific Validation Hook.
+	 *
+	 * Nonce verification is handled by WPForms before this hook is called.
+	 * See: WPForms_Process::process() which verifies 'wpforms[nonce]'.
 	 */
 	public function wpforms_validation( $field_id, $field_submit, $form_data ) {
+		// phpcs:ignore WordPress.Security.NonceVerification.Missing -- Nonce verified by WPForms core before this hook fires.
 		if ( isset( $_POST['wpforms']['fields'][ $field_id . '_e164' ] ) ) {
-			$val = sanitize_text_field( wp_unslash( $_POST['wpforms']['fields'][ $field_id . '_e164' ] ) );
-			if ( ! empty( $val ) && ! preg_match( '/^\+[1-9]\d{1,14}$/', $val ) ) {
+			// phpcs:ignore WordPress.Security.NonceVerification.Missing
+			if ( self::is_invalid_e164( $_POST['wpforms']['fields'][ $field_id . '_e164' ] ) ) {
 				wpforms()->process->errors[ $form_data['id'] ][ $field_id ] = __( 'Please enter a valid international phone number.', 'universal-phone' );
 			}
 		}
@@ -161,12 +174,11 @@ class Universal_Phone_Input {
 		// Enqueue intl-tel-input JS from CDN
 		wp_enqueue_script( 'intl-tel-input', 'https://cdnjs.cloudflare.com/ajax/libs/intl-tel-input/17.0.19/js/intlTelInput.min.js', array( 'jquery' ), '17.0.19', true );
 		
-		// Enqueue utils script. We load it separately to ensure it is available, though intlTelInput can load it dynamically if configured.
-		// However, loading via wp_enqueue_script is more reliable for dependencies. 
-		// Actually, intl-tel-input usually loads utils.js via a URL option. We will pass the URL in localization.
-		
+		// Enqueue utils.js locally (bundled with plugin to prevent dynamic script injection)
+		wp_enqueue_script( 'intl-tel-input-utils', esc_url( plugin_dir_url( __FILE__ ) . 'assets/utils.js' ), array( 'intl-tel-input' ), '17.0.19', true );
+
 		// Enqueue our custom initialization script
-		wp_enqueue_script( 'universal-iti-init', esc_url( plugin_dir_url( __FILE__ ) . 'assets/universal-iti-init.js' ), array( 'intl-tel-input', 'jquery' ), '1.0.0', true );
+		wp_enqueue_script( 'universal-iti-init', esc_url( plugin_dir_url( __FILE__ ) . 'assets/universal-iti-init.js' ), array( 'intl-tel-input', 'intl-tel-input-utils', 'jquery' ), '1.0.0', true );
 
 		// Localize script with data (validate filter outputs to prevent tampering by rogue plugins)
 		$default_country = apply_filters( 'universal_phone_default_country', 'us' );
@@ -176,10 +188,8 @@ class Universal_Phone_Input {
 		$overwrite_input = (bool) $overwrite_input;
 
 		$data = array(
-			'utilsScript'     => 'https://cdnjs.cloudflare.com/ajax/libs/intl-tel-input/17.0.19/js/utils.js',
 			'defaultCountry'  => $default_country,
 			'overwriteInput'  => $overwrite_input,
-			'nonce'           => wp_create_nonce( 'universal_phone_action' ), // CSRF Protection nonce
 		);
 		wp_localize_script( 'universal-iti-init', 'UniversalPhoneData', $data );
 	}
