@@ -98,9 +98,14 @@ class Universal_Phone_Input {
 		$e164_name = $name . '_e164';
 
 		// phpcs:ignore WordPress.Security.NonceVerification.Missing -- Nonce verified by CF7 core before this hook fires.
-		if ( isset( $_POST[ $e164_name ] ) ) {
+		$original_value = isset( $_POST[ $name ] ) ? sanitize_text_field( wp_unslash( $_POST[ $name ] ) ) : '';
+
+		// If the user typed a phone number, the _e164 field MUST exist and be valid.
+		if ( ! empty( $original_value ) ) {
 			// phpcs:ignore WordPress.Security.NonceVerification.Missing
-			if ( self::is_invalid_e164( $_POST[ $e164_name ] ) ) {
+			$e164_value = isset( $_POST[ $e164_name ] ) ? self::sanitize_e164( $_POST[ $e164_name ] ) : '';
+
+			if ( empty( $e164_value ) ) {
 				if ( method_exists( $result, 'invalidate' ) ) {
 					$result->invalidate( $tag, __( 'Please enter a valid international phone number.', 'universal-phone' ) );
 				}
@@ -129,9 +134,14 @@ class Universal_Phone_Input {
 			$id = $field['custom_id'];
 
 			// phpcs:ignore WordPress.Security.NonceVerification.Missing -- Nonce verified by Elementor Pro before this hook fires.
-			if ( isset( $_POST['form_fields'][ $id . '_e164' ] ) ) {
+			$original_value = isset( $_POST['form_fields'][ $id ] ) ? sanitize_text_field( wp_unslash( $_POST['form_fields'][ $id ] ) ) : '';
+
+			// If the user typed a phone number, the _e164 field MUST exist and be valid.
+			if ( ! empty( $original_value ) ) {
 				// phpcs:ignore WordPress.Security.NonceVerification.Missing
-				if ( self::is_invalid_e164( $_POST['form_fields'][ $id . '_e164' ] ) ) {
+				$e164_value = isset( $_POST['form_fields'][ $id . '_e164' ] ) ? self::sanitize_e164( $_POST['form_fields'][ $id . '_e164' ] ) : '';
+
+				if ( empty( $e164_value ) ) {
 					$ajax_handler->add_error( $id, __( 'Please enter a valid international phone number.', 'universal-phone' ) );
 				}
 			}
@@ -145,10 +155,15 @@ class Universal_Phone_Input {
 	 * See: WPForms_Process::process() which verifies 'wpforms[nonce]'.
 	 */
 	public function wpforms_validation( $field_id, $field_submit, $form_data ) {
-		// phpcs:ignore WordPress.Security.NonceVerification.Missing -- Nonce verified by WPForms core before this hook fires.
-		if ( isset( $_POST['wpforms']['fields'][ $field_id . '_e164' ] ) ) {
-			// phpcs:ignore WordPress.Security.NonceVerification.Missing
-			if ( self::is_invalid_e164( $_POST['wpforms']['fields'][ $field_id . '_e164' ] ) ) {
+		// $field_submit contains the original field value provided by WPForms.
+		$original_value = is_string( $field_submit ) ? sanitize_text_field( $field_submit ) : '';
+
+		// If the user typed a phone number, the _e164 field MUST exist and be valid.
+		if ( ! empty( $original_value ) ) {
+			// phpcs:ignore WordPress.Security.NonceVerification.Missing -- Nonce verified by WPForms core before this hook fires.
+			$e164_value = isset( $_POST['wpforms']['fields'][ $field_id . '_e164' ] ) ? self::sanitize_e164( $_POST['wpforms']['fields'][ $field_id . '_e164' ] ) : '';
+
+			if ( empty( $e164_value ) ) {
 				wpforms()->process->errors[ $form_data['id'] ][ $field_id ] = __( 'Please enter a valid international phone number.', 'universal-phone' );
 			}
 		}
