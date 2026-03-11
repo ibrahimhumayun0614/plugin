@@ -173,29 +173,25 @@ class Universal_Phone_Input {
 	 * Enqueue scripts and styles.
 	 */
 	public function enqueue_assets() {
-		// Enqueue intl-tel-input CSS from CDN
-		wp_enqueue_style( 'intl-tel-input', 'https://cdnjs.cloudflare.com/ajax/libs/intl-tel-input/17.0.19/css/intlTelInput.css', array(), '17.0.19' );
+		$assets_url = plugin_dir_url( __FILE__ ) . 'assets/';
 
-		// Custom CSS for flag dropdown to ensure it overlays correctly on existing forms
-		$custom_css = "
-			.iti { width: 100%; }
-			.iti__flag { background-image: url('https://cdnjs.cloudflare.com/ajax/libs/intl-tel-input/17.0.19/img/flags.png'); }
-			@media (-webkit-min-device-pixel-ratio: 2), (min-resolution: 192dpi) {
-			  .iti__flag { background-image: url('https://cdnjs.cloudflare.com/ajax/libs/intl-tel-input/17.0.19/img/flags@2x.png'); }
-			}
-		";
+		// Enqueue intl-tel-input CSS locally
+		wp_enqueue_style( 'intl-tel-input', esc_url( $assets_url . 'intlTelInput.min.css' ), array(), '25.4.3' );
+
+		// Custom CSS for layout consistency
+		$custom_css = ".iti { width: 100%; }";
 		wp_add_inline_style( 'intl-tel-input', $custom_css );
 
-		// Enqueue intl-tel-input JS from CDN
-		wp_enqueue_script( 'intl-tel-input', 'https://cdnjs.cloudflare.com/ajax/libs/intl-tel-input/17.0.19/js/intlTelInput.min.js', array( 'jquery' ), '17.0.19', true );
+		// Enqueue intl-tel-input JS locally
+		wp_enqueue_script( 'intl-tel-input', esc_url( $assets_url . 'intlTelInput.min.js' ), array(), '25.4.3', true );
 		
-		// Enqueue utils.js locally (bundled with plugin to prevent dynamic script injection)
-		wp_enqueue_script( 'intl-tel-input-utils', esc_url( plugin_dir_url( __FILE__ ) . 'assets/utils.js' ), array( 'intl-tel-input' ), '17.0.19', true );
+		// Enqueue utils.js locally
+		wp_enqueue_script( 'intl-tel-input-utils', esc_url( $assets_url . 'utils.js' ), array( 'intl-tel-input' ), '25.4.3', true );
 
 		// Enqueue our custom initialization script
-		wp_enqueue_script( 'universal-iti-init', esc_url( plugin_dir_url( __FILE__ ) . 'assets/universal-iti-init.js' ), array( 'intl-tel-input', 'intl-tel-input-utils', 'jquery' ), '1.0.0', true );
+		wp_enqueue_script( 'universal-iti-init', esc_url( $assets_url . 'universal-iti-init.js' ), array( 'intl-tel-input', 'intl-tel-input-utils', 'jquery' ), '1.0.0', true );
 
-		// Localize script with data (validate filter outputs to prevent tampering by rogue plugins)
+		// Localize script with data
 		$default_country = apply_filters( 'universal_phone_default_country', 'us' );
 		$default_country = preg_match( '/^[a-z]{2}$/i', $default_country ) ? strtolower( $default_country ) : 'us';
 

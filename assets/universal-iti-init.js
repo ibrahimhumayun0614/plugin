@@ -230,12 +230,13 @@
             input.parentNode.insertBefore(hiddenInput, input.nextSibling);
         }
 
-        // Initialize intl-tel-input with timezone-based country detection
-        // utils.js is pre-loaded via wp_enqueue_script (no dynamic URL needed)
+        // Initialize intl-tel-input (v25.4.3)
+        // Note: utils.js is pre-loaded as a WordPress dependency
         const iti = window.intlTelInput(input, {
             initialCountry: detectCountry(),
             separateDialCode: true,
-            nationalMode: false
+            strictMode: true,
+            autoPlaceholder: 'polite'
         });
 
         // Function to update hidden input with E.164 number
